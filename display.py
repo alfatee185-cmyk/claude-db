@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 from datetime import date, datetime, timedelta
 from collections import defaultdict
@@ -118,6 +119,12 @@ def _footer():
 
 
 def show_dashboard():
+    # Snap terminal to exact fit: 85 cols × 5 rows
+    if sys.stdout.isatty():
+        sys.stdout.write("\033[8;5;85t")
+        sys.stdout.flush()
+        time.sleep(0.05)   # let the resize settle before first render
+
     init_db()
     try:
         with Live(refresh_per_second=0.2, screen=False) as live:
