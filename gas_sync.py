@@ -1,6 +1,6 @@
 import os
 import requests
-from db import get_unsynced, mark_synced
+from db import get_unsynced, get_today, get_week, get_month, mark_synced
 
 
 def _load_gas_url():
@@ -46,3 +46,38 @@ def sync_sessions():
         mark_synced(synced_ids)
 
     print(f"\nSynced {len(synced_ids)}/{len(rows)} sessions.")
+
+
+def resync_sessions(scope="today"):
+    url = _load_gas_url()
+    if not url:
+        print("CLD_GAS_URL not set. Run: echo 'CLD_GAS_URL=<url>' >> ~/yamane/.env")
+        return
+
+    if scope == "week":
+        rows = get_week()
+    elif scope == "month":
+        rows = get_month()
+    else:
+        rows = get_today()
+
+    if not rows:
+        print(f"No sessions in scope: {scope}")
+        return
+
+    ok_count = 0
+    for s in rows:
+        payload = {"action": "saveClaudeLog", "data": s}
+        try:
+            resp = requests.post(url, json=payload, timeout=30)
+            result = resp.json()
+            if result.get("ok"):
+                ok_count += 1
+                task = s.get("task") or "(unlabeled)"
+                print(f"  ok  {s['id'][:12]}  [{s.get('category','?')}]  {task[:30]}")
+            else:
+                print(f"  ERR {s['id'][:12]}  {result.get('error','?')}")
+        except Exception as e:
+            print(f"  ERR {s['id'][:12]}  {e}")
+
+    print(f"\nResynced {ok_count}/{len(rows)} sessions ({scope}).")

@@ -57,6 +57,15 @@ def cmd_sync():
     sync_sessions()
 
 
+def cmd_resync(args):
+    from gas_sync import resync_sessions
+    scope = args[0] if args else "today"
+    if scope not in ("today", "week", "month"):
+        print("Usage: clduse resync [today|week|month]")
+        sys.exit(1)
+    resync_sessions(scope)
+
+
 def cmd_daemon(args):
     import daemon as d
     sub = args[0] if args else "status"
@@ -98,6 +107,8 @@ def main():
         cmd_week()
     elif cmd == "sync":
         cmd_sync()
+    elif cmd == "resync":
+        cmd_resync(rest)
     elif cmd == "daemon":
         cmd_daemon(rest)
     elif cmd == "scan":
@@ -106,7 +117,7 @@ def main():
         cmd_sync()
     else:
         print(f"Unknown command: {cmd}")
-        print("Commands: log <task> | today | week | sync | daemon start/stop/status | scan")
+        print("Commands: log <task> | today | week | sync | resync [today|week|month] | daemon start/stop/status | scan")
         sys.exit(1)
 
 
