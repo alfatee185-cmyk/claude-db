@@ -47,3 +47,6 @@ def show_week():
     if unlabeled > len(sessions) * 0.5:
         print(f"\n  [insight] {unlabeled} unlabeled sessions — run: clduse log \"task\" to categorize.")
     print()
+
+    from display import show_heatmap
+    show_heatmap(sessions)
