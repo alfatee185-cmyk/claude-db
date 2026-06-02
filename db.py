@@ -1,6 +1,6 @@
 import sqlite3
 import os
-from datetime import date
+from datetime import date, datetime, timedelta
 from config import DB_PATH, CLD_DIR
 
 
@@ -81,6 +81,16 @@ def get_month():
     with _conn() as c:
         cur = c.execute(
             "SELECT * FROM sessions WHERE date(timestamp)>=date('now','start of month') ORDER BY timestamp DESC"
+        )
+        return _to_dicts(cur.fetchall(), cur)
+
+
+def get_recent_hours(n=5):
+    cutoff = (datetime.now() - timedelta(hours=n)).isoformat()
+    with _conn() as c:
+        cur = c.execute(
+            "SELECT * FROM sessions WHERE timestamp >= ? ORDER BY timestamp DESC",
+            (cutoff,)
         )
         return _to_dicts(cur.fetchall(), cur)
 
