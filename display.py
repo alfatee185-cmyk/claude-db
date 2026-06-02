@@ -19,104 +19,82 @@ def _term_width():
         return 90
 
 
-def _gradient_bar(pct, max_pct, width):
-    """Gradient bar: green → yellow → red by position."""
-    if max_pct <= 0:
-        max_pct = 0.001
-    filled = min(width, max(0, int(pct / max_pct * width)))
-    t = Text()
-    for i in range(filled):
-        pos = i / width
-        if pos < 0.50:
-            t.append("█", style="bold green")
-        elif pos < 0.75:
-            t.append("█", style="bold yellow")
-        else:
-            t.append("█", style="bold red")
-    empty_style = "dim red" if pct / max_pct > 0.85 else "dim"
-    t.append("░" * (width - filled), style=empty_style)
-    return t
-
-
-def _ctx_bar(pct, width):
-    """Context bar: green → yellow → red by actual pct thresholds."""
+def _bar100(pct, width):
+    """Bar on 0-100% scale with gradient: green→yellow→red by actual value."""
+    pct    = max(0, min(100, pct))
     filled = min(width, max(0, int(pct / 100 * width)))
     t = Text()
     for i in range(filled):
-        pos = (i / width) * 100
-        if pos < 60:
+        pos = (i / width) * 100   # 0-100 position in bar
+        if pos < 50:
             t.append("█", style="bold green")
-        elif pos < 85:
+        elif pos < 75:
             t.append("█", style="bold yellow")
         else:
             t.append("█", style="bold red")
-    empty_style = "dim red" if pct > 85 else "dim"
-    t.append("░" * (width - filled), style=empty_style)
+    t.append("░" * (width - filled), style="dim red" if pct > 85 else "dim")
     return t
 
 
-def _pct_color(pct, max_pct):
-    ratio = pct / max_pct if max_pct > 0 else 0
-    if ratio < 0.5:  return "green"
-    if ratio < 0.75: return "yellow"
-    return "red"
+def _pct_color100(pct):
+    if pct < 50:  return "green"
+    if pct < 75:  return "yellow"
+    return "bold red"
 
 
 def _main_panel(today, h5, week, month, live_data):
-    now      = time.strftime("%H:%M:%S")
-    tw       = _term_width()
+    now = time.strftime("%H:%M:%S")
+    tw  = _term_width()
     bar_ctx = max(10, min(22, tw - 58))
-    bar_w   = max(5,   min(8,  (tw - 84) // 3))
+    bar_w   = max(5,  min(8,  (tw - 84) // 3))
 
-    # --- Gather values ---
-    session_pct = live_data["cost_pct"]    if live_data else 0
-    h5_pct      = sum(s.get("cost_pct", 0) for s in h5)
-    week_pct    = sum(s.get("cost_pct", 0) for s in week)
-    month_pct   = sum(s.get("cost_pct", 0) for s in month)
-    code_pct    = sum(s.get("cost_pct", 0) for s in month if s.get("source") == "code")
-    web_pct     = sum(s.get("cost_pct", 0) for s in month if s.get("source") == "web")
-    max_cost    = max(session_pct, h5_pct, week_pct, month_pct, code_pct, 0.001)
+    # --- Real rate-limit values from statusLine JSON (via ~/.cld/status.json) ---
+    ctx_pct  = live_data["context_pct"]           if live_data else 0
+    fh_pct   = live_data.get("fh_pct")            if live_data else None   # 5hr rate limit %
+    fh_reset = live_data.get("fh_reset", "—")     if live_data else "—"
+    wk_pct   = live_data.get("wk_pct")            if live_data else None   # weekly rate limit %
+    wk_reset = live_data.get("wk_reset", "—")     if live_data else "—"
 
-    s_reset = live_data["session_reset"] if live_data else "—"
-    w_reset = live_data["weekly_reset"]  if live_data else "—"
+    # Cost tracking from SQLite (separate metric, shown as Mo)
+    month_pct = sum(s.get("cost_pct", 0) for s in month)
+    code_pct  = sum(s.get("cost_pct", 0) for s in month if s.get("source") == "code")
+    web_pct   = sum(s.get("cost_pct", 0) for s in month if s.get("source") == "web")
 
-    # --- Line 1: LIVE + context ---
+    # --- Line 1: LIVE + context (0-100%) ---
     line1 = Text()
     if live_data:
         model   = (live_data["model"] or "—")[:22]
         project = (live_data["project"] or "—")[:14]
-        ctx_pct = live_data["context_pct"]
-        ctx_k   = live_data["context_tokens"] // 1000
         line1.append("LIVE ", style="bold green")
         line1.append(f"{model}  ", style="cyan")
         line1.append(f"{project}  ", style="dim")
-        line1.append("│  ", style="dim")
-        line1.append("Ctx ", style="dim")
-        line1.append_text(_ctx_bar(ctx_pct, bar_ctx))
-        ctx_color = "green" if ctx_pct < 60 else ("yellow" if ctx_pct < 85 else "bold red")
-        line1.append(f"  {ctx_pct:.1f}%", style=ctx_color)
-        line1.append(f"  ↻{s_reset}", style="dim")
+        line1.append("│  Ctx ", style="dim")
+        line1.append_text(_bar100(ctx_pct, bar_ctx))
+        line1.append(f"  {ctx_pct:.1f}%", style=_pct_color100(ctx_pct))
+        line1.append(f"  ↻{fh_reset}", style="dim")
     else:
         line1.append("No active session", style="dim")
 
-    # --- Line 2: Session | Week | Month  Code/Web ---
-    # Session reset already on line 1 (ctx), so omit from sess here
-    def _seg(label, pct, reset_hint=None):
-        col = _pct_color(pct, max_cost)
+    # --- Line 2: 5hr | Week | Mo (cost) ---
+    def _seg100(label, pct, reset_hint=None, fmt=".0f"):
         t = Text()
         t.append(f"{label} ", style="dim")
-        t.append_text(_gradient_bar(pct, max_cost, bar_w))
-        t.append(f" {pct:.2f}%", style=col)
+        if pct is not None:
+            t.append_text(_bar100(pct, bar_w))
+            t.append(f" {pct:{fmt}}%", style=_pct_color100(pct))
+        else:
+            t.append("░" * bar_w, style="dim")
+            t.append(" —%", style="dim")
         if reset_hint:
             t.append(f" ↻{reset_hint}", style="dim")
         return t
 
     line2 = Text()
-    line2.append_text(_seg("Sess", session_pct))
+    line2.append_text(_seg100("5hr", fh_pct, fh_reset))
     line2.append("  │  ", style="dim")
-    line2.append_text(_seg("Week", week_pct, w_reset))
+    line2.append_text(_seg100("Wk", wk_pct, wk_reset))
     line2.append("  │  ", style="dim")
-    line2.append_text(_seg("Mo", month_pct))
+    line2.append_text(_seg100("Mo", month_pct if month_pct else None, fmt=".2f"))
     if tw >= 90:
         line2.append(f"  Co {code_pct:.2f}%", style="blue")
         line2.append(f"  Wb {web_pct:.2f}%", style="magenta")
