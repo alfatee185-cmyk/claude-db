@@ -12,38 +12,59 @@ Path     : ~/claude-db/
 Command  : clduse
 Python   : conda yamane (Python 3.11)
 Git      : main branch
+GitHub   : alfatee185-cmyk/claude-db
 ```
+
+---
+
+## Current Status (2026-06-02)
+
+All components live on both Air and Mini:
+
+| Component | Air | Mini |
+|-----------|-----|------|
+| Stop hook (log_hook.py) | ✅ | ✅ |
+| Browser daemon (LaunchAgent) | ✅ | ✅ |
+| clduse TUI (alias in .zshrc) | ✅ | ✅ |
+| GAS + Google Sheet | ✅ deployed | reads same sheet |
+| CLD_GAS_URL in .env | ✅ | ✅ |
+| statusLine saves status.json | ✅ settings.json | ✅ statusline-command.sh |
+
+### TUI — 85×5 auto-resize
+```
+╭─ clduse  HH:MM:SS ──────────────────────────────────────────────────────╮
+│ LIVE model  project  │  Ctx [bar] ctx%  ↻Xh Ym                         │
+│ 5hr [bar] X% ↻HH:MM  │  Wk [bar] X% ↻FriHH:MM  │  Mo [bar] X%        │
+╰─────────────────────────────────────────────────────────────────────────╯
+  Ctrl+C exit  │  new terminal: clduse log/sync/resync/today/week/daemon
+```
+Live data from `~/.cld/status.json` (written by statusLine every tick).
+Bars: 0-100% scale, gradient green→yellow→red.
+
+### Pending
+- [ ] Auto-sync on Stop hook (currently manual: `clduse sync`)
 
 ---
 
 ## Git Workflow
 
 ```
-Air = workstation (develop + test)
-Flow: edit → git add -A → git commit → git push
+Air = primary (develop + commit + push)
+Mini = secondary (git pull to sync)
 
-Init (first time):
-  cd ~/claude-db
-  git init
-  git remote add origin [repo-url]
-  git add -A && git commit -m "initial"
+Flow: edit → git add -A → git commit → git push (Air)
+      ssh Mini → cd ~/claude-db && git pull
 ```
 
-## Drive Backup
+---
+
+## Key Data
 
 ```
-Folder   : /AI-Context/claude-db/
-Parent ID: (new folder — create if not exist)
-Files    : weekly-YYYY-WW.md, working logs
-Pattern  : same as yamane — upload via Google Drive MCP
-```
-
-## Working Log Triggers
-
-```
-start/cont  → load Drive context first
-finish/done → generate working log → upload Drive → git commit
-log         → show current log
+GAS Project  : "Claude Dashboard" (script.google.com)
+CLD_GAS_URL  : ~/yamane/.env
+CLD_SHEET_ID : ~/yamane/.env  (1I5OqL7UOeedIUYbHFbEFlM_p-eQo19Pe87zS4BNB5Y8)
+Google Sheet : LOG tab, 12 columns
 ```
 
 ---
@@ -57,22 +78,13 @@ Sheet key   : CLD_SHEET_ID (in ~/yamane/.env)
 Actions     : saveClaudeLog, getClaudeLogs, ping
 ```
 
-### Deploy pattern (same as Yamane)
+### Deploy pattern
 ```
 Execute as    : Me (her.alfa185@gmail.com)
 Who has access: Anyone
 URL format    : https://script.google.com/macros/s/[ID]/exec
 Always use /exec — never /dev
-Always -L flag in curl
 Redeploy = New version every time code changes
-```
-
-### Test after deploy
-```bash
-curl -s -L -X POST "$(grep CLD_GAS_URL ~/yamane/.env | cut -d= -f2)" \
-  -H "Content-Type: application/json" \
-  -d '{"action":"ping"}'
-# expect: {"ok":true,"ts":"..."}
 ```
 
 ---
@@ -82,9 +94,23 @@ curl -s -L -X POST "$(grep CLD_GAS_URL ~/yamane/.env | cut -d= -f2)" \
 ```
 ES5 only — no const/let, no =>, no fetch(), no template literals
 appendRow() for single rows
-getDataRange().getValues() for reading — never loop getValue()
-Max execution: 30s
-Timeout Python side: 30s minimum
+Max execution: 30s / Python timeout >= 30s
+```
+
+---
+
+## Key Paths
+
+```
+~/claude-db/              project root (Air + Mini)
+~/.cld/sessions.db        SQLite runtime data
+~/.cld/status.json        statusLine JSON cache (rate limits, ctx%, cost)
+~/.cld/daemon.pid         daemon PID
+~/.cld/daemon.log         daemon log
+~/.cld/hook.log           Stop hook errors only
+~/.claude/settings.json   Air: Stop hook + statusLine save
+~/.claude/statusline-command.sh  Mini: patched to save status.json
+~/yamane/.env             CLD_GAS_URL + CLD_SHEET_ID
 ```
 
 ---
@@ -93,33 +119,20 @@ Timeout Python side: 30s minimum
 
 ```
 Local  : ~/.cld/sessions.db (SQLite)
-Remote : GAS → Google Sheets LOG tab → Drive /AI-Context/claude-db/
-Sync   : clduse sync (manual) or auto on session end
+Remote : GAS → Google Sheets LOG tab
+Sync   : clduse sync (manual)
 ```
 
 ---
 
-## Services & Ports
+## Services
 
 ```
-clduse TUI      : terminal only (no port)
-daemon          : background process, PID in ~/.cld/daemon.pid
-Claude Code hook: ~/.claude/settings.json Stop hook → log_hook.py
-```
-
----
-
-## Key Paths
-
-```
-~/claude-db/       project root
-~/.cld/sessions.db        SQLite runtime data
-~/.cld/daemon.pid         daemon PID
-~/.cld/daemon.log         daemon log
-~/.cld/hook.log           Stop hook log (errors only)
-~/.claude/settings.json   Claude Code hooks config
-~/yamane/.env             all env keys including CLD_GAS_URL
-~/claude-db/gas/   GAS source files (paste into script.google.com)
+clduse TUI  : terminal only, auto-resizes to 85×5
+daemon      : background, PID in ~/.cld/daemon.pid, LaunchAgent on both machines
+Stop hook   : ~/.claude/settings.json → log_hook.py (Air)
+             ~/.claude/settings.json → log_hook.py (Mini)
+statusLine  : saves full session JSON to ~/.cld/status.json (both machines)
 ```
 
 ---
@@ -150,21 +163,26 @@ MODELS = {
 
 ---
 
-## Lessons (relevant to this project)
+## Lessons
 
 ```
-[GAS-1] Always -L in curl — GAS redirects before responding
-[GAS-2] Redeploy = New version — /dev URL is unstable
-[GAS-3] Cold start 10-20s — Python timeout must be >= 30s
-[GAS-4] SHEET_ID in Sheets URL: /spreadsheets/d/[SHEET_ID]/edit
-[GAS-9] ES5 only in .gs files — no arrow functions, no const/let
+[GAS-1]  Always -L in curl — GAS redirects before responding
+[GAS-2]  Redeploy = New version — /dev URL is unstable
+[GAS-3]  Cold start 10-20s — Python timeout must be >= 30s
+[GAS-9]  ES5 only in .gs files — no arrow functions, no const/let
 [GAS-10] Test with ping first always
 
 [HOOK-1] log_hook.py reads stdin JSON from Claude Code
 [HOOK-2] Must exit silently — any stdout breaks Claude Code display
 [HOOK-3] All errors go to ~/.cld/hook.log
 
-[DAEMON-1] Poll Safari first, then Chrome — user may use either
+[DAEMON-1] Poll Safari first, then Chrome
 [DAEMON-2] Idle > 30min = new session (don't merge)
 [DAEMON-3] Write PID to ~/.cld/daemon.pid for clean stop
+
+[STATUSLINE-1] statusLine JSON has real rate_limits.five_hour, seven_day, context_window, cost.total_cost_usd
+[STATUSLINE-2] Save to ~/.cld/status.json — primary data source for TUI
+[STATUSLINE-3] Air: add save to settings.json statusLine command
+               Mini: patch ~/.claude/statusline-command.sh after input=$(cat) line
+[TUI-1] screen=False + expand=False + \033[8;5;85t = compact 85×5 auto-resize
 ```
