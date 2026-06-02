@@ -30,21 +30,8 @@ def cmd_log(task):
 
 
 def cmd_today():
-    init_db()
-    sessions = get_today()
-    if not sessions:
-        print("No sessions today.")
-        return
-    total_pct = sum(s.get("cost_pct", 0) for s in sessions)
-    print(f"\nToday — {len(sessions)} sessions  total {total_pct:.3f}%\n")
-    for s in sessions:
-        ts    = s.get("timestamp", "")[:16]
-        src   = s.get("source", "")
-        model = s.get("model", "")[:25]
-        task  = s.get("task") or "(unlabeled)"
-        pct   = s.get("cost_pct", 0)
-        print(f"  {ts}  [{src}]  {model:<25}  {task:<30}  {pct:.3f}%")
-    print()
+    from display import show_today
+    show_today()
 
 
 def cmd_week():
