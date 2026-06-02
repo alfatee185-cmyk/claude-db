@@ -14,10 +14,10 @@ def read_live():
     if not files:
         return None
 
-    latest  = max(files, key=os.path.getmtime)
-    project = os.path.basename(os.path.dirname(latest))
+    latest = max(files, key=os.path.getmtime)
 
     model = ""
+    project = ""
     total_in = total_cache = total_out = 0
     context_tokens = 0
 
@@ -26,6 +26,8 @@ def read_live():
             for line in f:
                 try:
                     e   = json.loads(line)
+                    if not project and e.get("cwd"):
+                        project = os.path.basename(e["cwd"])
                     msg = e.get("message", {}) or {}
                     u   = msg.get("usage") or e.get("usage") or {}
                     if u:
