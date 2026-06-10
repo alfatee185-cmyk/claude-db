@@ -74,13 +74,13 @@ def main():
         init_db()
 
         model      = data.get("model", "")
-        usage      = data.get("usage") or {}
-        tokens_in  = int(usage.get("input_tokens", 0) or 0)
-        tokens_out = int(usage.get("output_tokens", 0) or 0)
+        tokens_in  = 0
+        tokens_out = 0
 
-        prices   = PRICING.get(model, {"input": 3.00, "output": 15.00})
-        cost_usd = (tokens_in * prices["input"] + tokens_out * prices["output"]) / 1_000_000
-        cost_pct = round(cost_usd / PRO_MONTHLY_USD * 100, 4)
+        # Stop hook JSON has cost.total_cost_usd (not usage.input_tokens)
+        cost_block = data.get("cost") or {}
+        cost_usd   = float(cost_block.get("total_cost_usd", 0) or 0)
+        cost_pct   = round(cost_usd / PRO_MONTHLY_USD * 100, 4)
 
         cwd     = data.get("cwd", "") or ""
         project = os.path.basename(cwd) if cwd else ""
