@@ -10,6 +10,49 @@ _DIR = os.path.expanduser("~/.cld")
 _HOOK_LOG = os.path.join(_DIR, "hook.log")
 
 
+def _load_gas_url() -> str:
+    url = os.environ.get("CLD_GAS_URL", "")
+    if url:
+        return url
+    env_path = os.path.expanduser("~/yamane/.env")
+    if os.path.exists(env_path):
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("CLD_GAS_URL="):
+                    return line.split("=", 1)[1]
+    return ""
+
+
+def _silent_sync():
+    """Sync unsynced sessions to GAS. Never prints to stdout."""
+    try:
+        import requests
+        from db import get_unsynced, mark_synced
+
+        url = _load_gas_url()
+        if not url:
+            return
+
+        rows = get_unsynced()
+        if not rows:
+            return
+
+        synced_ids = []
+        for s in rows:
+            try:
+                resp = requests.post(url, json={"action": "saveClaudeLog", "data": s}, timeout=30)
+                if resp.json().get("ok"):
+                    synced_ids.append(s["id"])
+            except Exception:
+                pass
+
+        if synced_ids:
+            mark_synced(synced_ids)
+    except Exception:
+        _err(traceback.format_exc())
+
+
 def _err(msg):
     os.makedirs(_DIR, exist_ok=True)
     with open(_HOOK_LOG, "a") as f:
@@ -64,6 +107,7 @@ def main():
     except Exception:
         _err(traceback.format_exc())
 
+    _silent_sync()
     sys.exit(0)
 
 
