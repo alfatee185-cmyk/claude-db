@@ -73,7 +73,8 @@ def main():
 
         init_db()
 
-        model      = data.get("model", "")
+        model_raw  = data.get("model", "")
+        model      = model_raw.get("id", "") if isinstance(model_raw, dict) else str(model_raw)
         tokens_in  = 0
         tokens_out = 0
 
